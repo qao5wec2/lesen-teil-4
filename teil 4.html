@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Matching – Multi-Topics (Editor)</title>
+  <style>
+    :root{
+      --bg1:#05070d; --bg2:#0b1020; --card:#0f1630;
+      --accent:#6df0ff; --accent2:#9b7dff;
+      --ok:#22c55e; --bad:#ef4444;
+      --text:#e6f3ff; --muted:#9fb6cc;
+      --glow1: rgba(109,240,255,.55);
+      --glow2: rgba(155,125,255,.45);
+      --panel:#0b132b;
+    }
+    html, body { height:100%; margin:0; overflow-x:hidden; background: radial-gradient(1200px 800px at 20% 10%, #0e1530 0%, var(--bg1) 35%, var(--bg2) 100%); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    canvas#stars { position: fixed; inset: 0; z-index: 0; pointer-events:none; }
+    .wrap { position: relative; z-index: 1; max-width: 1200px; margin: 28px auto; padding: 16px; }
+    .header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .title { display:flex; align-items:center; gap:10px; font-size: clamp(18px, 4vw, 26px); letter-spacing:.3px; text-shadow: 0 0 12px var(--glow1); animation: floaty 6s ease-in-out infinite; }
+    .badge { padding: 4px 10px; border-radius: 999px; background: linear-gradient(90deg, rgba(109,240,255,.2), rgba(155,125,255,.2)); border: 1px solid rgba(109,240,255,.35); font-size:12px; color:var(--muted); }
+    @keyframes floaty { 0% { transform: translateY(0) } 50% { transform: translateY(-6px) } 100% { transform: translateY(0) } }
+    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .btn { appearance:none; border:none; cursor:pointer; padding:10px 14px; color:var(--text); border-radius:12px;
+      background: linear-gradient(180deg, #192343, #111833); border:1px solid rgba(109,240,255,.35);
+      box-shadow: 0 0 14px rgba(109,240,255,.15);
+      transition: transform .15s ease, box-shadow .2s ease, background .2s ease; }
+    .btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 18px rgba(109,240,255,.35); }
+    .btn:active { transform: translateY(0) scale(.98); }
+    .score { font-size:14px; color:var(--muted); background: linear-gradient(180deg, rgba(20,30,70,.6), rgba(20,30,70,.3)); border: 1px solid rgba(109,240,255,.25); padding: 8px 12px; border-radius: 10px; backdrop-filter: blur(6px); }
+    .topicSel { background: linear-gradient(180deg, #0f1734, #0a122a); color:var(--text); border:1px solid rgba(109,240,255,.35); border-radius:10px; padding:8px 10px; outline:none; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    @media (max-width: 950px){ .grid { grid-template-columns: 1fr; } }
+    .col { display:flex; flex-direction:column; gap:12px; }
+    .card { background: linear-gradient(180deg, rgba(20,30,70,.65), rgba(13,18,40,.8)); border:1px solid rgba(109,240,255,.22); border-radius:16px; padding:12px; box-shadow:0 12px 30px rgba(0,0,0,.25); position:relative; overflow:hidden; }
+    .card::after{ content:""; position:absolute; inset:-2px; border-radius:18px; pointer-events:none; box-shadow: 0 0 20px var(--glow1), 0 0 26px var(--glow2) inset; opacity:.25; }
+    .topic { font-weight:700; margin-bottom:8px; letter-spacing:.3px; text-shadow: 0 0 10px rgba(109,240,255,.35); }
+    .person { display:flex; align-items:flex-start; gap:12px; }
+    .avatar { width:44px; height:44px; border-radius:50%; background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent2)); flex:0 0 44px; box-shadow: 0 0 10px rgba(109,240,255,.6); display:flex; align-items:center; justify-content:center; font-weight:800; color:#051427; }
+    .p-body { flex:1; display:flex; flex-direction:column; gap:8px; }
+    .p-name { font-weight:800; letter-spacing:.2px; }
+    .p-kw { font-size:12px; color:#c7d2fe; }
+    .p-hint { font-size:13px; color:#dbeafe; direction: rtl; text-align: right; }
+    .drop { margin-top:8px; min-height:52px; border:1px dashed rgba(109,240,255,.4); border-radius:12px; display:flex; align-items:center; justify-content:center; color:var(--muted); padding:8px; transition:border-color .2s ease, transform .2s ease; }
+    .drop.filled { border-style:solid; color:var(--text); }
+    .drop.ok { border-color: var(--ok) !important; transform: scale(1.01); }
+    .drop.bad { border-color: var(--bad) !important; transform: scale(1.01); }
+    .item { background: linear-gradient(180deg, #0f1734, #0a122a); border:1px solid rgba(109,240,255,.3); border-radius:12px; padding:12px; cursor:grab; user-select:none; box-shadow:0 8px 18px rgba(0,0,0,.35); transition: transform .12s ease, box-shadow .2s ease, border-color .2s ease; }
+    .item:hover { transform: translateY(-2px); box-shadow: 0 0 16px rgba(109,240,255,.35); border-color: rgba(109,240,255,.45); }
+    .item:active { cursor:grabbing; }
+    .bank { display:grid; grid-template-columns: 1fr; gap:12px; }
+    .tag { font-size:12px; color:var(--muted); margin-top:6px; }
+    .confetti { position: fixed; pointer-events: none; inset: 0; z-index: 2; }
+    /* Editor Panel */
+    .editor-toggle { margin-left: 6px; }
+    .editor { position: fixed; top:0; right:0; height:100vh; width: min(520px, 92vw); background: var(--panel); border-left:1px solid rgba(109,240,255,.35); box-shadow: -10px 0 30px rgba(0,0,0,.5); transform: translateX(100%); transition: transform .25s ease; z-index: 3; display:flex; flex-direction:column; }
+    .editor.open { transform: translateX(0); }
+    .editor header { display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid rgba(109,240,255,.25); }
+    .tabs { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(109,240,255,.2); flex-wrap:wrap; }
+    .tab { padding:6px 10px; border:1px solid rgba(109,240,255,.25); border-radius:8px; cursor:pointer; }
+    .tab.active { background: #111a38; }
+    .panel { padding:12px; overflow:auto; display:none; }
+    .panel.active { display:block; }
+    .field { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+    .field label { font-size:12px; color:var(--muted); }
+    .field input, .field textarea, .field select { background:#0e1736; color:var(--text); border:1px solid rgba(109,240,255,.3); border-radius:8px; padding:8px; }
+    .list { display:flex; flex-direction:column; gap:12px; }
+    .row { border:1px solid rgba(109,240,255,.25); padding:10px; border-radius:10px; }
+    .row-title { font-weight:700; margin-bottom:6px; }
+    .row-actions { display:flex; gap:8px; margin-top:8px; }
+    .mini { padding:6px 10px; border-radius:8px; font-size:12px; }
+    .danger { border-color:#ef4444; }
+    .footer { display:flex; gap:8px; padding:12px; border-top:1px solid rgba(109,240,255,.25); flex-wrap:wrap; }
+    .jsonbox { width:100%; min-height:120px; }
+  </style>
+</head>
+<body>
+  <canvas id="stars"></canvas>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">🚀 Matching – Multi-Topics <span class="badge">Editor</span></div>
+      <div class="controls">
+        <select id="topicSel" class="topicSel" title="Thema wählen">
+          <option value="Topic 1">Topic 1 (WG)</option>
+          <option value="Topic 2">Topic 2</option>
+          <option value="Topic 3">Topic 3</option>
+          <option value="Topic 4">Topic 4</option>
+          <option value="Topic 5">Topic 5</option>
+          <option value="Topic 6">Topic 6</option>
+        <option value="arbeitsbedingungen">arbeitsbedingungen</option>
+</select>
+        <div class="score">Score: <span id="score">0</span> / <span id="total">6</span></div>
+        <button id="resetBtn" class="btn">Reset</button>
+        <button id="shuffleBtn" class="btn">Shuffle</button>
+        <button id="checkBtn" class="btn">Check</button>
+        <button id="showBtn" class="btn">Show Lösungen</button>
+        <button id="editBtn" class="btn editor-toggle">Edit Mode</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="col" id="personsCol">
+        <div class="card"><div class="topic">🪐 Thema: <span id="topicTitle">Topic 1 (WG)</span></div></div>
+      </div>
+      <div class="col">
+        <div class="card">
+          <div style="font-weight:700; margin-bottom:8px;">Fragen (اسحب وضع كل واحدة مع الشخص المناسب)</div>
+          <div id="bank" class="bank"></div>
+          <div class="tag">تلميح: كل بطاقة تنتمي لشخص واحد فقط.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="confetti" class="confetti"></canvas>
+
+  <!-- Editor Panel -->
+  <aside id="editor" class="editor" aria-hidden="true">
+    <header>
+      <div>🔧 Editor</div>
+      <div>
+        <button id="saveBtn" class="btn mini">Save</button>
+        <button id="closeBtn" class="btn mini">Close</button>
+      </div>
+    </header>
+    <div class="tabs">
+      <div class="tab active" data-tab="persons">Persons</div>
+      <div class="tab" data-tab="fragen">Fragen</div>
+      <div class="tab" data-tab="io">Import/Export</div>
+      <div class="tab" data-tab="topics">Topics</div>
+    </div>
+    <section id="personsPanel" class="panel active">
+      <div class="list" id="personsList"></div>
+      <div class="footer">
+        <button id="addPerson" class="btn mini">+ Add Person</button>
+        <button id="resetDefault" class="btn mini danger">Reset Topic to Default</button>
+      </div>
+    </section>
+    <section id="fragenPanel" class="panel">
+      <div class="list" id="fragenList"></div>
+      <div class="footer">
+        <button id="addFrage" class="btn mini">+ Add Frage</button>
+      </div>
+    </section>
+    <section id="ioPanel" class="panel">
+      <div class="field">
+        <label>Export JSON (هذا الموضوع فقط)</label>
+        <textarea id="exportBox" class="jsonbox" readonly></textarea>
+      </div>
+      <div class="field">
+        <label>Import JSON لهذا الموضوع</label>
+        <textarea id="importBox" class="jsonbox" placeholder='{\"persons\":[...],\"fragen\":[...]}'></textarea>
+      </div>
+      <div class="footer">
+        <button id="useImport" class="btn mini">Use Import (then Save)</button>
+      </div>
+    </section>
+    <section id="topicsPanel" class="panel">
+      <div class="field">
+        <label>Topic Title</label>
+        <input id="topicNameInput" />
+      </div>
+      <div class="footer">
+        <button id="renameTopic" class="btn mini">Rename Topic</button>
+        <button id="clearTopic" class="btn mini danger">Clear Topic (6 empty slots)</button>
+      </div>
+    </section>
+  </aside>
+
+  <script>
+    /* ====== Default Data for 6 topics ====== */
+    const STORAGE_KEY = "multi_topics_matching_editor_v1";
+    const DEFAULT_TOPICS = {
+      "Topic 1": {
+        title: "Topic 1 (WG)",
+        persons: [
+          { name: "Jana", kw: "Schlüsselwörter: auf eigene Beine stehen", ar: "على الشخص أن يكسب ماله بنفسه ويعتمد على نفسه؛ ومن الممتع أن يسافر بأمواله الخاصة لاحقًا.", want: "unabhängig lohnen" },
+          { name: "Nikolas", kw: "Schlüsselwörter: Haushalt, Geld", ar: "العيش مع كبار السن، القيام بأعمالهم المنزلية مقابل السكن (توفير Geld).", want: "Hilfsbereitschaft zu zahlen" },
+          { name: "Mana", kw: "", ar: "يجب أن يكون لكل شخص بيئته الخاصة؛ هذا غير ممكن في WG.", want: "Allein Leben macht glücklich" },
+          { name: "Daniel", kw: "", ar: "إذا لم تكن لديك مشكلة مع إخوتك/عائلتك، فلماذا WG؟", want: "WG ist keine Familie" },
+          { name: "Susanne", kw: "", ar: "يسكن بطريقة تسمح له أن يكون بمفرده، ويتحدث مع الآخرين عندما يريد.", want: "Allein Leben ohne einsam zu sein" },
+          { name: "Max", kw: "", ar: "الدراسة أهم بكثير من شكل السكن.", want: "Studieren ist wichtiger als Wohnform" }
+        ],
+        fragen: [
+          "unabhängig lohnen",
+          "Hilfsbereitschaft zu zahlen",
+          "Allein Leben macht glücklich",
+          "WG ist keine Familie",
+          "Allein Leben ohne einsam zu sein",
+          "Studieren ist wichtiger als Wohnform"
+        ]
+      },
+      "Topic 2": { title: "Topic 2", persons: Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""})), fragen: Array(6).fill("") },
+      "Topic 3": { title: "Topic 3", persons: Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""})), fragen: Array(6).fill("") },
+      "Topic 4": { title: "Topic 4", persons: Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""})), fragen: Array(6).fill("") },
+      "Topic 5": { title: "Topic 5", persons: Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""})), fragen: Array(6).fill("") },
+      "Topic 6": { title: "Topic 6", persons: Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""})), fragen: Array(6).fill("") },
+    };
+
+    function loadAll(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return JSON.parse(JSON.stringify(DEFAULT_TOPICS));
+        const parsed = JSON.parse(raw);
+        return parsed;
+      }catch(e){
+        return JSON.parse(JSON.stringify(DEFAULT_TOPICS));
+      }
+    }
+    function saveAll(data){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let ALL = loadAll();
+    const topicSel = document.getElementById('topicSel');
+    const topicTitleEl = document.getElementById('topicTitle');
+    const personsCol = document.getElementById('personsCol');
+    const bank = document.getElementById('bank');
+    const resetBtn = document.getElementById('resetBtn');
+    const shuffleBtn = document.getElementById('shuffleBtn');
+    const checkBtn = document.getElementById('checkBtn');
+    const showBtn = document.getElementById('showBtn');
+    const scoreEl = document.getElementById('score');
+    const totalEl = document.getElementById('total');
+
+    let CURR = ALL[topicSel.value];
+
+    function shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i],a[j]] = [a[j],a[i]];
+      }
+      return a;
+    }
+
+    function render(){
+      topicTitleEl.textContent = CURR.title;
+      personsCol.querySelectorAll('.card.personCard')?.forEach(e => e.remove());
+      bank.innerHTML = '';
+      scoreEl.textContent = '0';
+      totalEl.textContent = String(CURR.persons.length);
+
+      // Persons
+      shuffle(CURR.persons).forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card personCard';
+
+        const row = document.createElement('div');
+        row.className = 'person';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.textContent = (p.name||'').slice(0,1) || '?';
+
+        const body = document.createElement('div');
+        body.className = 'p-body';
+        const name = document.createElement('div'); name.className = 'p-name'; name.textContent = p.name || '—';
+        if (p.kw) {
+          const kw = document.createElement('div'); kw.className = 'p-kw'; kw.textContent = p.kw;
+          body.appendChild(kw);
+        }
+        const hint = document.createElement('div'); hint.className = 'p-hint'; hint.textContent = '💡 ' + (p.ar || '');
+        const drop = document.createElement('div'); drop.className = 'drop'; drop.textContent = 'ضع الإجابة هنا';
+        drop.dataset.person = p.name || '';
+        drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('ok'); });
+        drop.addEventListener('dragleave', () => drop.classList.remove('ok'));
+        drop.addEventListener('drop', e => {
+          e.preventDefault();
+          drop.classList.remove('ok');
+          const id = e.dataTransfer.getData('text/plain');
+          const item = document.getElementById(id);
+          if(!item) return;
+          const existing = drop.querySelector('.item');
+          if(existing){ bank.appendChild(existing); }
+          drop.textContent = '';
+          drop.classList.add('filled');
+          drop.appendChild(item);
+        });
+
+        body.appendChild(name);
+        body.appendChild(hint);
+        body.appendChild(drop);
+        row.appendChild(avatar);
+        row.appendChild(body);
+        card.appendChild(row);
+        personsCol.appendChild(card);
+      });
+
+      // Fragen bank
+      shuffle(CURR.fragen).forEach((text, idx) => {
+        const item = document.createElement('div');
+        item.className = 'item';
+        item.id = 'opt_' + idx;
+        item.draggable = true;
+        item.textContent = text || '—';
+        // Find matching person for this frage
+        const mp = CURR.persons.find(p => (p.want||'').trim() === (text||'').trim());
+        item.dataset.person = mp ? (mp.name || '') : '';
+        item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', item.id));
+        bank.appendChild(item);
+      });
+    }
+
+    function check(){
+      let score = 0;
+      document.querySelectorAll('.drop').forEach(drop => {
+        const item = drop.querySelector('.item');
+        drop.classList.remove('ok','bad');
+        if(item){
+          if(item.dataset.person === drop.dataset.person && drop.dataset.person){
+            drop.classList.add('ok'); score++; playTone(880, 0.08);
+          } else {
+            drop.classList.add('bad'); playTone(220, 0.08);
+          }
+        } else {
+          drop.classList.add('bad');
+        }
+      });
+      scoreEl.textContent = String(score);
+      if(score === CURR.persons.length){ confettiBoom(); }
+    }
+
+    function showSolutions(){
+      document.querySelectorAll('.item').forEach(i => {
+        const target = document.querySelector(`.drop[data-person="${i.dataset.person}"]`);
+        if(target){
+          const existing = target.querySelector('.item');
+          if(existing){ bank.appendChild(existing); }
+          target.textContent = '';
+          target.classList.add('filled','ok');
+          target.appendChild(i);
+        }
+      });
+      scoreEl.textContent = String(CURR.persons.length);
+      confettiBoom();
+    }
+
+    // Topic switching
+    topicSel.addEventListener('change', () => {
+      // Ensure exists
+      if(!ALL[topicSel.value]) ALL[topicSel.value] = JSON.parse(JSON.stringify(DEFAULT_TOPICS["Topic 2"]));
+      CURR = ALL[topicSel.value];
+      saveAll(ALL);
+      render();
+      // Update editor topic title field
+      document.getElementById('topicNameInput').value = CURR.title || topicSel.value;
+    });
+
+    // Editor logic
+    const editor = document.getElementById('editor');
+    const editBtn = document.getElementById('editBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const personsList = document.getElementById('personsList');
+    const fragenList = document.getElementById('fragenList');
+    const addPerson = document.getElementById('addPerson');
+    const addFrage = document.getElementById('addFrage');
+    const resetDefault = document.getElementById('resetDefault');
+    const exportBox = document.getElementById('exportBox');
+    const importBox = document.getElementById('importBox');
+    const useImport = document.getElementById('useImport');
+    const topicNameInput = document.getElementById('topicNameInput');
+    const renameTopicBtn = document.getElementById('renameTopic');
+    const clearTopicBtn = document.getElementById('clearTopic');
+
+    function openEditor(){
+      buildPersonsForm(); buildFragenForm();
+      exportBox.value = JSON.stringify(CURR, null, 2);
+      topicNameInput.value = CURR.title || topicSel.value;
+      editor.classList.add('open'); editor.setAttribute('aria-hidden','false');
+    }
+    function closeEditor(){ editor.classList.remove('open'); editor.setAttribute('aria-hidden','true'); }
+
+    editBtn.addEventListener('click', openEditor);
+    closeBtn.addEventListener('click', closeEditor);
+
+    saveBtn.addEventListener('click', () => {
+      // collect persons
+      const rowsP = personsList.querySelectorAll('.row');
+      const persons = [];
+      rowsP.forEach(r => {
+        persons.push({
+          name: r.querySelector('input[name="name"]').value.trim(),
+          kw: r.querySelector('input[name="kw"]').value.trim(),
+          ar: r.querySelector('textarea[name="ar"]').value.trim(),
+          want: r.querySelector('input[name="want"]').value.trim(),
+        });
+      });
+      // collect fragen
+      const rowsF = fragenList.querySelectorAll('.row');
+      const fragen = [];
+      rowsF.forEach(r => {
+        const val = r.querySelector('input[name="frage"]').value.trim();
+        fragen.push(val);
+      });
+      CURR.persons = persons;
+      CURR.fragen = fragen;
+      CURR.title = topicNameInput.value.trim() || CURR.title;
+      ALL[topicSel.value] = CURR;
+      saveAll(ALL);
+      exportBox.value = JSON.stringify(CURR, null, 2);
+      closeEditor();
+      render();
+    });
+
+    resetDefault.addEventListener('click', () => {
+      if(confirm('Reset this topic to default template?')){
+        if(topicSel.value === "Topic 1"){
+          CURR = JSON.parse(JSON.stringify(DEFAULT_TOPICS["Topic 1"]));
+        } else {
+          CURR = JSON.parse(JSON.stringify(DEFAULT_TOPICS["Topic 2"]));
+        }
+        ALL[topicSel.value] = CURR;
+        saveAll(ALL);
+        buildPersonsForm(); buildFragenForm();
+        exportBox.value = JSON.stringify(CURR, null, 2);
+        render();
+      }
+    });
+
+    useImport.addEventListener('click', () => {
+      try{
+        const parsed = JSON.parse(importBox.value);
+        if(!Array.isArray(parsed.persons) || !Array.isArray(parsed.fragen)) throw 0;
+        CURR = parsed;
+        ALL[topicSel.value] = CURR;
+        saveAll(ALL);
+        buildPersonsForm(); buildFragenForm();
+        exportBox.value = JSON.stringify(CURR, null, 2);
+        render();
+        alert('Imported to editor. Click Save to confirm.');
+      }catch(e){
+        alert('Invalid JSON');
+      }
+    });
+
+    renameTopicBtn.addEventListener('click', () => {
+      const newTitle = topicNameInput.value.trim();
+      if(!newTitle) return;
+      CURR.title = newTitle;
+      ALL[topicSel.value] = CURR;
+      saveAll(ALL);
+      document.getElementById('topicTitle').textContent = CURR.title;
+      exportBox.value = JSON.stringify(CURR, null, 2);
+      // Also update the select option label
+      const opt = [...topicSel.options].find(o => o.value === topicSel.value);
+      if(opt){ opt.textContent = CURR.title; }
+    });
+
+    clearTopicBtn.addEventListener('click', () => {
+      if(!confirm('Clear topic to 6 empty persons + 6 empty fragen?')) return;
+      CURR.persons = Array(6).fill(0).map((_,i)=>({name:`Person ${i+1}`, kw:"", ar:"", want:""}));
+      CURR.fragen  = Array(6).fill("");
+      ALL[topicSel.value] = CURR;
+      saveAll(ALL);
+      buildPersonsForm(); buildFragenForm();
+      exportBox.value = JSON.stringify(CURR, null, 2);
+      render();
+    });
+
+    function buildPersonsForm(){
+      personsList.innerHTML = '';
+      CURR.persons.forEach((p, idx) => {
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = `
+          <div class="row-title">Person #${idx+1}</div>
+          <div class="field"><label>Name</label><input name="name" value="${p.name||''}"></div>
+          <div class="field"><label>Schlüsselwörter</label><input name="kw" value="${p.kw||''}"></div>
+          <div class="field"><label>Arabic Hint (شرح عربي)</label><textarea name="ar" rows="3">${p.ar||''}</textarea></div>
+          <div class="field"><label>Matched Frage (exact text)</label><input name="want" value="${p.want||''}"></div>
+          <div class="row-actions">
+            <button class="btn mini danger" onclick="this.closest('.row').remove()">Delete</button>
+          </div>
+        `;
+        personsList.appendChild(row);
+      });
+    }
+    function buildFragenForm(){
+      fragenList.innerHTML = '';
+      CURR.fragen.forEach((f, idx) => {
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = `
+          <div class="row-title">Frage #${idx+1}</div>
+          <div class="field"><label>Text</label><input name="frage" value="${f||''}"></div>
+          <div class="row-actions">
+            <button class="btn mini danger" onclick="this.closest('.row').remove()">Delete</button>
+          </div>
+        `;
+        fragenList.appendChild(row);
+      });
+    }
+
+    // Buttons
+    function playTone(freq, dur){
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        g.gain.value = 0.05;
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start();
+        setTimeout(()=>{ o.stop(); }, dur*1000);
+      } catch(e){}
+    }
+    function confettiBoom(){
+      const canvas = document.getElementById('confetti');
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+      const pieces = new Array(180).fill(0).map(()=> ({
+        x: Math.random()*canvas.width, y: -20,
+        w: 6 + Math.random()*8, h: 8 + Math.random()*10,
+        vy: 2 + Math.random()*3, vx: (Math.random()-.5)*2,
+        rot: Math.random()*Math.PI, vr: (Math.random()-.5)*0.2,
+        col: `hsl(${Math.floor(Math.random()*360)},90%,60%)`
+      }));
+      let running = true;
+      (function step(){
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        for(const p of pieces){
+          p.vy += 0.02; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.fillStyle = p.col; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+          ctx.restore();
+        }
+        if(running){ requestAnimationFrame(step); }
+      })();
+      setTimeout(()=>{ running=false; ctx.clearRect(0,0,canvas.width,canvas.height); }, 3000);
+    }
+    resetBtn.addEventListener('click', render);
+    shuffleBtn.addEventListener('click', render);
+    checkBtn.addEventListener('click', check);
+    showBtn.addEventListener('click', showSolutions);
+
+    // Editor Tabs
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        const id = t.getAttribute('data-tab');
+        document.getElementById(id+'Panel').classList.add('active');
+      });
+    });
+
+    // Stars background
+    (function stars(){
+      const canvas = document.getElementById('stars');
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      function resize(){ canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr; }
+      resize(); addEventListener('resize', resize);
+      const stars = new Array(160).fill(0).map(()=>({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:Math.random()*2+.5, s: Math.random()*0.6+0.2}));
+      function draw(){
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        for(const st of stars){
+          ctx.beginPath();
+          ctx.arc(st.x, st.y, st.r, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(255,255,255,${0.6+Math.sin(Date.now()*0.001*st.s)*0.4})`;
+          ctx.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+
+    // Init
+    function init(){
+      // Set select labels from saved titles
+      [...topicSel.options].forEach(opt => { if(ALL[opt.value]) opt.textContent = ALL[opt.value].title || opt.textContent; });
+      CURR = ALL[topicSel.value];
+      render();
+    }
+    init();
+  </script>
+
+<div id="arbeitsbedingungen" class="topic-section" style="display:none;">
+    <h2>arbeitsbedingungen</h2>
+    <button class="edit-btn" onclick="enableEditing('arbeitsbedingungen')">Edit</button>
+    <div class="matching-game">
+        <div class="card-container">
+            <!-- Empty cards for matching game -->
+            <div class="card">Card 1 - Edit me</div>
+            <div class="card">Card 2 - Edit me</div>
+            <div class="card">Card 3 - Edit me</div>
+            <div class="card">Card 4 - Edit me</div>
+            <div class="card">Card 5 - Edit me</div>
+            <div class="card">Card 6 - Edit me</div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
